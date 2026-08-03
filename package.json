@@ -1,0 +1,27 @@
+{
+  "name": "try-openpgp-archive",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node ./src/main.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Lastor",
+  "license": "ISC",
+  "packageManager": "pnpm@11.17.0+sha512.cca3cea332ad254bb84145f966d19f4879615210346fc92c79a047f23a0d7b3cca3c3792f0076ba1f1831d277efbcf0a9119b31a9a60eca7fb3d6231f331ef72",
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "openpgp": "^6.3.1",
+    "shell-quote": "^1.10.0"
+  },
+  "devDependencies": {
+    "@clack/prompts": "^1.7.0",
+    "@openpgp/web-stream-tools": "^0.3.1",
+    "@types/archiver": "^8.0.0",
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}
