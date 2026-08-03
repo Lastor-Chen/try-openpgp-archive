@@ -155,10 +155,15 @@ export async function decrypt() {
   const file = _file.trim()
 
   const totalBytes = fs.statSync(file).size
+
   const readable = fs.createReadStream(file)
   const readableStream = stream.Readable.toWeb(readable)
 
   const message = await openpgp.readMessage({ binaryMessage: readableStream })
+
+  type DataPacket = openpgp.SymEncryptedIntegrityProtectedDataPacket & { aeadAlgorithm: number | null }
+  const symEncryptedIntegrityProtectedDataPacket = message.packets.at(-1) as DataPacket
+  prompts.log.info(`AEAD: ${Boolean(symEncryptedIntegrityProtectedDataPacket.aeadAlgorithm)}`)
 
   const encKeyIds = message.getEncryptionKeyIDs()
 
@@ -175,12 +180,19 @@ export async function decrypt() {
   const rawPrivateKey = fs.readFileSync(privatePath, 'utf8')
 
   const privateKey = await openpgp.readPrivateKey({ armoredKey: rawPrivateKey })
-  // 可能有 passphrase 才需要
-  // const decryptKey = await openpgp.decryptKey({ privateKey })
-  const { data: decryptStream, signatures } = await openpgp.decrypt({
+
+  const { data: decryptStream } = await openpgp.decrypt({
     message,
     decryptionKeys: privateKey,
     format: 'binary',
+    config: {
+      // openpgp streaming 分 CFB, AEAD
+      // CFB - 會緩存到記憶體等驗證, 大檔案會撞 node.js 記憶體上限, 需關閉驗證
+      // AEAD - 較新未必都支援, openpgp 會以 key 上面是否設定 AEAD 來決定
+      // Streaming CFB:
+      // https://github.com/openpgpjs/openpgpjs/releases/tag/v4.0.0
+      allowUnauthenticatedStream: true,
+    },
   })
 
   const parsedInput = path.parse(file)
