@@ -8,17 +8,21 @@ import * as openpgp from 'openpgp'
 import * as prompts from '@clack/prompts'
 import { parse } from 'shell-quote'
 
+import { exitProcess, isBunStandalone, createProgressStream } from './utils.ts'
+
+const rootPath = isBunStandalone ? path.dirname(process.execPath) : process.cwd()
+
 export async function generateKey() {
   const _name = await prompts.text({ message: 'User name' })
-  if (prompts.isCancel(_name)) return
+  if (prompts.isCancel(_name)) return void exitProcess()
   const name = _name.trim()
 
   const _email = await prompts.text({ message: 'User email' })
-  if (prompts.isCancel(_email)) return
+  if (prompts.isCancel(_email)) return void exitProcess()
   const email = _email.trim()
 
   const _comment = await prompts.text({ message: 'Comment' })
-  if (prompts.isCancel(_comment)) return
+  if (prompts.isCancel(_comment)) return void exitProcess()
   const comment = _comment.trim()
 
   const keyPair = await openpgp.generateKey({
@@ -37,7 +41,7 @@ export async function generateKey() {
   const encKey = await parsedPrivateKey.getEncryptionKey()
   const encKeyId = encKey.getKeyID().toHex()
 
-  const saveDir = path.join(process.cwd(), './data/keyrings', keyId)
+  const saveDir = path.join(rootPath, './data/keyrings', keyId)
   fs.mkdirSync(saveDir, { recursive: true })
 
   fs.writeFileSync(path.join(saveDir, 'private.asc'), keyPair.privateKey)
@@ -46,7 +50,7 @@ export async function generateKey() {
 
   // meta
   let config: Record<string, string> = {}
-  const metaFile = path.join(process.cwd(), './data/metadata.json')
+  const metaFile = path.join(rootPath, './data/metadata.json')
   if (fs.existsSync(metaFile)) {
     const rawConfig = fs.readFileSync(metaFile, 'utf8')
     config = JSON.parse(rawConfig) as Record<string, string>
@@ -58,7 +62,7 @@ export async function generateKey() {
 
 export async function readKeyId() {
   const _keyPath = await prompts.text({ message: 'PGP key path' })
-  if (prompts.isCancel(_keyPath)) return
+  if (prompts.isCancel(_keyPath)) return void exitProcess()
   const keyPath = parse(_keyPath)[0] as string
 
   const pgpKey = fs.readFileSync(keyPath, 'utf8')
@@ -75,14 +79,14 @@ export async function encrypt() {
   const _files = await prompts.multiline({
     message: 'File paths (multi)'
   })
-  if (prompts.isCancel(_files)) return
+  if (prompts.isCancel(_files)) return void exitProcess()
   const files = parse(_files) as string[]
 
   const _pubkeyPaths = await prompts.multiline({ message: 'Public key paths (multi)' })
-  if (prompts.isCancel(_pubkeyPaths)) return
+  if (prompts.isCancel(_pubkeyPaths)) return void exitProcess()
   const pubkeyPaths = parse(_pubkeyPaths) as string[]
 
-  const dest = path.join(process.cwd(), './output/encrypted.zip.pgp')
+  const dest = path.join(rootPath, './output/encrypted.zip.pgp')
 
   // pack
   let totalBytes = 0
@@ -126,33 +130,31 @@ export async function encrypt() {
 
   // progress bar
   const p = prompts.progress({ max: totalBytes })
-  p.start()
-  let countBytes = 0
-  const progressStream = new webStream.TransformStream<Uint8Array>({
-    transform(chunk, controller) {
-      countBytes += chunk.byteLength
-      const percent = Math.floor((countBytes / totalBytes) * 100)
+  const progressStream = createProgressStream(totalBytes, {
+    onTransform(chunk, percent) {
       p.advance(chunk.byteLength, `${percent}%`)
-
-      controller.enqueue(chunk)
     },
-    flush() {
-      p.stop('encrypt successfully')
+    onFlush() {
+      p.stop('Encrypt successfully')
     },
   })
 
+  p.start()
   await stream.promises.pipeline(
     encryptStream,
     progressStream,
     writeStream,
   )
+
+  prompts.log.info(`Output:\n${dest}`)
 }
 
 export async function decrypt() {
   const _file = await prompts.text({ message: 'Encrypted file path' })
-  if (prompts.isCancel(_file)) return
+  if (prompts.isCancel(_file)) return void exitProcess()
   const file = _file.trim()
 
+  const totalBytes = fs.statSync(file).size
   const readable = fs.createReadStream(file)
   const readableStream = stream.Readable.toWeb(readable)
 
@@ -160,7 +162,7 @@ export async function decrypt() {
 
   const encKeyIds = message.getEncryptionKeyIDs()
 
-  const metaFile = path.join(process.cwd(), './data/metadata.json')
+  const metaFile = path.join(rootPath, './data/metadata.json')
   const rawConfig = fs.readFileSync(metaFile, 'utf8')
   const config = JSON.parse(rawConfig) as Record<string, string>
   const keyMap = new Map(Object.entries(config))
@@ -169,7 +171,7 @@ export async function decrypt() {
   if (!targetEncKeyId) throw new Error('Not Receiver')
   const primaryKeyId = keyMap.get(targetEncKeyId.toHex())!
 
-  const privatePath = path.join(process.cwd(), './data/keyrings/', primaryKeyId, 'private.asc')
+  const privatePath = path.join(rootPath, './data/keyrings/', primaryKeyId, 'private.asc')
   const rawPrivateKey = fs.readFileSync(privatePath, 'utf8')
 
   const privateKey = await openpgp.readPrivateKey({ armoredKey: rawPrivateKey })
@@ -185,8 +187,21 @@ export async function decrypt() {
   const outputPath = path.join(parsedInput.dir, parsedInput.name)
   const writeStream = fs.createWriteStream(outputPath)
 
+  // progress bar
+  const p = prompts.progress({ max: totalBytes })
+  const progressStream = createProgressStream(totalBytes, {
+    onTransform(chunk, percent) {
+      p.advance(chunk.byteLength, `${percent}%`)
+    },
+    onFlush() {
+      p.stop('Encrypt successfully')
+    },
+  })
+
+  p.start()
   await stream.promises.pipeline(
     decryptStream,
+    progressStream,
     writeStream,
   )
 }

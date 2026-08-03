@@ -1,6 +1,7 @@
 import * as prompts from '@clack/prompts'
 
-import * as apis from './api.ts'
+import * as apis from './service.ts'
+import { exitProcess } from './utils.ts'
 
 const keys = Object.keys(apis)
 
@@ -11,7 +12,10 @@ const method = await prompts.autocomplete({
     value: key as keyof typeof apis,
   })),
 })
-if (prompts.isCancel(method)) process.exit()
 
-await apis[method]()
-prompts.outro('completed')
+if (prompts.isCancel(method)) {
+  void exitProcess()
+} else {
+  await apis[method]()
+  prompts.outro('completed')
+}
