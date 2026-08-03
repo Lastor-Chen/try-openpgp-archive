@@ -11,8 +11,22 @@ $ pnpm dev
 ```
 
 1. generateKey, save in `data/`
-2. encrypt, select files and public key to zip pack then encrypt, save in `output/`
+2. encrypt, select files and public keys to zip pack then encrypt, save in `output/`
 3. decrypt, auto find private key from encrypted file for decrypt
+
+## Build single file executable by bun 
+
+Build for darwin arm64
+
+```
+$ bun run compile
+```
+
+Build for windows x64
+
+```
+$ bun run compile:win
+```
 
 ## Other
 
