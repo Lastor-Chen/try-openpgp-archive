@@ -1,14 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import stream from 'node:stream'
-import webStream from 'node:stream/web'
 
 import { ZipArchive } from 'archiver'
 import * as openpgp from 'openpgp'
 import * as prompts from '@clack/prompts'
 import { parse } from 'shell-quote'
 
-import { exitProcess, isBunStandalone, createProgressStream } from './utils.ts'
+import { exitProcess, isBunStandalone, createProgressStream, renameIfExisted } from './utils.ts'
 
 const rootPath = isBunStandalone ? path.dirname(process.execPath) : process.cwd()
 
@@ -86,7 +85,7 @@ export async function encrypt() {
   if (prompts.isCancel(_pubkeyPaths)) return void exitProcess()
   const pubkeyPaths = parse(_pubkeyPaths) as string[]
 
-  const dest = path.join(rootPath, './output/encrypted.zip.pgp')
+  const dest = renameIfExisted(path.join(rootPath, 'output', 'encrypted.zip.pgp'))
 
   // pack
   let totalBytes = 0
@@ -152,7 +151,7 @@ export async function encrypt() {
 export async function decrypt() {
   const _file = await prompts.text({ message: 'Encrypted file path' })
   if (prompts.isCancel(_file)) return void exitProcess()
-  const file = _file.trim()
+  const file = parse(_file)[0] as string
 
   const totalBytes = fs.statSync(file).size
 
@@ -168,6 +167,9 @@ export async function decrypt() {
   const encKeyIds = message.getEncryptionKeyIDs()
 
   const metaFile = path.join(rootPath, './data/metadata.json')
+  const hasMeta = fs.existsSync(metaFile)
+  if (!hasMeta) throw new Error('Key pair not yet created')
+
   const rawConfig = fs.readFileSync(metaFile, 'utf8')
   const config = JSON.parse(rawConfig) as Record<string, string>
   const keyMap = new Map(Object.entries(config))
@@ -195,8 +197,12 @@ export async function decrypt() {
     },
   })
 
-  const parsedInput = path.parse(file)
-  const outputPath = path.join(parsedInput.dir, parsedInput.name)
+  // 去除 .pgp or .gpg
+  let outputPath = path.basename(file, '.pgp')
+  outputPath = path.basename(outputPath, '.gpg')
+  outputPath = path.join(path.dirname(file), outputPath)
+
+  outputPath = renameIfExisted(outputPath)
   const writeStream = fs.createWriteStream(outputPath)
 
   // progress bar

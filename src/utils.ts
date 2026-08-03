@@ -1,4 +1,6 @@
 import webStream from 'node:stream/web'
+import path from 'node:path'
+import fs from 'node:fs'
 
 import * as prompts from '@clack/prompts'
 
@@ -45,4 +47,24 @@ export function createProgressStream(
 			options?.onFlush?.()
 		},
 	})
+}
+
+/**
+ * If file is existed, add serial number to the file name.
+ */
+export function renameIfExisted(filePath: string) {
+	const { base: basename, dir } = path.parse(filePath)
+
+	const splitted = basename.split('.')
+	const filename = splitted[0]
+	const extChain = '.' + splitted.slice(1).join('.')
+
+	let newFileName = basename
+	let count = 1
+	while (fs.existsSync(path.join(dir, newFileName))) {
+		newFileName = `${filename}(${count})${extChain}`
+		count++
+	}
+
+	return path.join(dir, newFileName)
 }
